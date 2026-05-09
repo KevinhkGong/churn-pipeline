@@ -323,4 +323,4 @@ stronger signal.
 
 ---
 
-*Built by Hongkun (Kevin) Wang for the ScriptChain Health ML Internship Technical Interview.*
+*Built by Hongkun (Kevin) Gong for the ScriptChain Health ML Internship Technical Interview.*
