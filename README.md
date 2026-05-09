@@ -2,7 +2,6 @@
 
 A daily ML data pipeline that ingests raw user activity CSVs, validates data
 quality, stores processed data, and conditionally triggers model training.
-Built as a take-home for the ScriptChain Health ML internship.
 
 The pipeline is designed around one principle: **training only happens on
 data we trust**. Every batch passes through layered validation, and any
