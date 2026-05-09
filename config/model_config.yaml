@@ -1,0 +1,53 @@
+# =============================================================================
+# Model Training Configuration
+# =============================================================================
+# Kept separate from pipeline_config.yaml because in production these are
+# typically owned by different roles: data engineers tune the pipeline,
+# ML engineers tune the model.
+# =============================================================================
+
+model:
+  type: "logistic_regression"
+  random_state: 42
+
+  # Train/test split for in-pipeline evaluation
+  test_size: 0.2
+
+  # Features to use. Excludes IDs, dates, and the target itself.
+  features:
+    numeric:
+      - tenure_days
+      - monthly_charges
+      - total_charges
+      - num_logins_last_30d
+      - avg_session_minutes
+      - num_support_tickets
+      - days_since_last_login
+    categorical:
+      - plan_type
+      - payment_method
+      - is_active
+
+  target: "churned"
+
+  # Hyperparameters per model type
+  hyperparameters:
+    logistic_regression:
+      C: 1.0
+      max_iter: 1000
+      class_weight: "balanced"      # churn is imbalanced
+    random_forest:
+      n_estimators: 200
+      max_depth: 10
+      class_weight: "balanced"
+
+# Minimum acceptable model performance. If a freshly trained model falls
+# below these on the held-out test set, it is NOT promoted — the previous
+# model continues to serve. (We log it either way.)
+acceptance_thresholds:
+  min_roc_auc: 0.65
+  min_recall_churn_class: 0.50      # catching churners matters more than precision
+
+# Output naming for model artifacts
+artifact:
+  filename_template: "churn_model_{run_date}.joblib"

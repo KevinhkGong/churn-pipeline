@@ -1,0 +1,139 @@
+# =============================================================================
+# Churn Prediction Pipeline Configuration
+# =============================================================================
+# This file is the contract between every stage of the pipeline. Thresholds,
+# paths, and rules live here — not in code — so that operators can tune the
+# pipeline without touching Python.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Paths
+# -----------------------------------------------------------------------------
+paths:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  quarantine_dir: "data/quarantine"
+  archive_dir: "data/archive"
+  reports_dir: "reports"
+  models_dir: "models"
+  logs_dir: "logs"
+
+# -----------------------------------------------------------------------------
+# Schema definition
+# -----------------------------------------------------------------------------
+# Defines the expected structure of incoming raw CSVs. Any deviation from
+# this is a structural failure and blocks the pipeline.
+schema:
+  primary_key: "user_id"
+  target_column: "churned"
+
+  columns:
+    user_id:           { dtype: "string",  required: true }
+    signup_date:       { dtype: "date",    required: true }
+    tenure_days:       { dtype: "int",     required: true }
+    plan_type:         { dtype: "category", required: true }
+    monthly_charges:   { dtype: "float",   required: true }
+    total_charges:     { dtype: "float",   required: true }
+    num_logins_last_30d: { dtype: "int",   required: true }
+    avg_session_minutes: { dtype: "float", required: true }
+    num_support_tickets: { dtype: "int",   required: true }
+    days_since_last_login: { dtype: "int", required: true }
+    payment_method:    { dtype: "category", required: true }
+    is_active:         { dtype: "bool",    required: true }
+    churned:           { dtype: "int",     required: true }   # 0 / 1 label
+
+# -----------------------------------------------------------------------------
+# Validation rules
+# -----------------------------------------------------------------------------
+validation:
+
+  # ---- Volume bounds ------------------------------------------------------
+  # Reject files that are obviously too small (truncated upload) or too
+  # large (likely a multi-day dump landing by mistake).
+  row_count:
+    min: 100
+    max: 1000000
+
+  # ---- Null-rate thresholds ----------------------------------------------
+  # Maximum tolerated null fraction per column. Exceeding the threshold is
+  # an ERROR (blocks training). Default applies to any column not listed.
+  null_rate_thresholds:
+    user_id: 0.0                  # primary key — zero tolerance
+    churned: 0.0                  # label — zero tolerance
+    signup_date: 0.01
+    monthly_charges: 0.05
+    days_since_last_login: 0.10
+    num_logins_last_30d: 0.10
+    default: 0.20
+
+  # ---- Numeric value ranges ----------------------------------------------
+  # Inclusive [min, max] bounds. Out-of-range rows are flagged; if more
+  # than `out_of_range_row_pct` of rows have any out-of-range value, ERROR.
+  value_ranges:
+    tenure_days:           [0, 7300]      # 0 to ~20 years
+    monthly_charges:       [0.0, 500.0]
+    total_charges:         [0.0, 100000.0]
+    num_logins_last_30d:   [0, 1000]
+    avg_session_minutes:   [0.0, 600.0]   # 10 hours/session ceiling
+    num_support_tickets:   [0, 200]
+    days_since_last_login: [0, 3650]
+  out_of_range_row_pct: 0.02              # >2% of rows out-of-range -> ERROR
+
+  # ---- Categorical allowed values ----------------------------------------
+  # Unseen categories are flagged. Strict mode means any new category errors;
+  # lenient mode warns but lets it through.
+  categorical_allowed:
+    plan_type: ["free", "basic", "premium"]
+    payment_method: ["card", "bank", "paypal"]
+  categorical_strict: true
+
+  # ---- Distribution checks ------------------------------------------------
+  # Sanity-check the *shape* of the batch, not individual rows.
+  distribution:
+    churn_rate_range: [0.01, 0.30]        # expected 1%-30% churn
+    # Volume drift: today's row count vs. 7-day rolling average.
+    # If today is <50% or >200% of recent average, WARN (not error).
+    volume_drift_pct: 0.50
+
+  # ---- Severity policy ----------------------------------------------------
+  # Which check categories block training vs. just warn.
+  block_training_on:
+    - "schema_error"
+    - "primary_key_violation"
+    - "null_rate_exceeded"
+    - "out_of_range_exceeded"
+    - "unknown_category_strict"
+    - "row_count_out_of_bounds"
+    - "churn_rate_out_of_range"
+
+# -----------------------------------------------------------------------------
+# Cleaning rules
+# -----------------------------------------------------------------------------
+# Deterministic transformations applied BEFORE validation. Cleaning is for
+# fixing obvious noise (whitespace, casing); it is NOT for hiding bad data.
+cleaning:
+  drop_duplicates_on: "user_id"
+  string_columns_strip_whitespace: true
+  string_columns_lowercase: ["plan_type", "payment_method"]
+  fill_missing:
+    num_support_tickets: 0       # missing means "no tickets filed"
+  date_columns: ["signup_date"]
+  date_format: "%Y-%m-%d"
+
+# -----------------------------------------------------------------------------
+# Storage
+# -----------------------------------------------------------------------------
+storage:
+  format: "parquet"
+  compression: "snappy"
+  # Processed files are versioned by the run date: processed_YYYY-MM-DD.parquet
+  filename_template: "processed_{run_date}.parquet"
+
+# -----------------------------------------------------------------------------
+# Training trigger
+# -----------------------------------------------------------------------------
+training:
+  enabled: true
+  # Only trigger training if the validation report has zero blocking errors
+  # AND the new processed file exists. Both are checked by the orchestrator.
+  min_training_rows: 500

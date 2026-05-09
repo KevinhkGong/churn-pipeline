@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Pipeline outputs (keep structure, ignore contents)
+data/raw/*.csv
+data/processed/*.parquet
+data/quarantine/*.csv
+data/archive/*.csv
+reports/*.json
+models/*.pkl
+models/*.joblib
+logs/*.log
+
+# But keep the directories themselves
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/quarantine/.gitkeep
+!data/archive/.gitkeep
+!reports/.gitkeep
+!models/.gitkeep
+!logs/.gitkeep
